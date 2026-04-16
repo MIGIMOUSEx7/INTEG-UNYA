@@ -1,7 +1,27 @@
-import { useState, useEffect } from 'react'
-import axios from 'axios'
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate } from 'react-router-dom'
-import './App.css'
+import { useState, useEffect } from 'react';
+import axios from 'axios';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, Navigate } from 'react-router-dom';
+import './App.css';
+
+// --- 0. ROUTE GUARD (The "Facebook Trick" Foundation) ---
+const ProtectedRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  // If there's no token in storage, immediately kick them to the login screen
+  if (!token) {
+    return <Navigate to="/auth" replace />;
+  }
+  return children;
+};
+
+// --- 0.5 GUEST ROUTE (The Reverse Bouncer) ---
+const GuestRoute = ({ children }) => {
+  const token = localStorage.getItem('token');
+  // If they already have an ID card, don't let them see the login page!
+  if (token) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return children;
+};
 
 // --- 1. LANDING PAGE ---
 const LandingPage = () => (
@@ -20,35 +40,36 @@ const LandingPage = () => (
 
 // --- 2. AUTH PAGE ---
 const AuthPage = () => {
-  const [isLogin, setIsLogin] = useState(true)
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
-  const [email, setEmail] = useState('')
-  const [message, setMessage] = useState('')
+  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    const endpoint = isLogin ? 'auth/jwt/create/' : 'auth/users/'
-    setMessage('Processing...')
+    e.preventDefault();
+    const endpoint = isLogin ? 'auth/jwt/create/' : 'auth/users/';
+    setMessage('Processing...');
     
     try {
-      const payload = isLogin ? { username, password } : { username, email, password }
-      const response = await axios.post(`http://127.0.0.1:8000/${endpoint}`, payload)
+      const payload = isLogin ? { username, password } : { username, email, password };
+      const response = await axios.post(`http://127.0.0.1:8000/${endpoint}`, payload);
 
       if (isLogin) {
-        localStorage.setItem('token', response.data.access)
-        setMessage("✅ Welcome back!")
-        setTimeout(() => navigate('/dashboard'), 1000);
+        localStorage.setItem('token', response.data.access);
+        setMessage("✅ Welcome back!");
+        // The { replace: true } prevents the login page from staying in the back-button history
+        setTimeout(() => navigate('/dashboard', { replace: true }), 1000);
       } else {
-        setMessage("✅ Account created! Please sign in.")
-        setIsLogin(true)
+        setMessage("✅ Account created! Please sign in.");
+        setIsLogin(true);
       }
     } catch (error) {
       const errorDetail = error.response?.data ? JSON.stringify(error.response.data) : "Request failed.";
       setMessage("❌ Error: " + errorDetail);
     }
-  }
+  };
 
   return (
     <div className="auth-container">
@@ -80,8 +101,8 @@ const AuthPage = () => {
         </button>
       </div>
     </div>
-  )
-}
+  );
+};
 
 // --- 3. DASHBOARD ---
 const Dashboard = () => {
@@ -90,7 +111,6 @@ const Dashboard = () => {
   const token = localStorage.getItem('token');
 
   useEffect(() => {
-    if (!token) { navigate('/auth'); return; }
     const getUserData = async () => {
       try {
         const response = await axios.get('http://127.0.0.1:8000/auth/users/me/', {
@@ -98,11 +118,12 @@ const Dashboard = () => {
         });
         setUser(response.data);
       } catch (error) {
+        // If token is invalid/expired, wipe it and kick to login
         localStorage.removeItem('token');
         navigate('/auth');
       }
     };
-    getUserData();
+    if (token) getUserData();
   }, [token, navigate]);
 
   return (
@@ -116,7 +137,7 @@ const Dashboard = () => {
           <Link to="/profile" className="menu-item">👤 Profile Settings</Link>
         </nav>
         <div className="sidebar-footer">
-          <button onClick={() => {localStorage.removeItem('token'); navigate('/')}} className="logout-btn-new">Logout System</button>
+          <button onClick={() => {localStorage.removeItem('token'); navigate('/auth')}} className="logout-btn-new">Logout System</button>
         </div>
       </aside>
       <main className="main-content-new">
@@ -124,7 +145,7 @@ const Dashboard = () => {
           <div className="search-bar-dummy">Search something...</div>
           <div className="profile-section">
             <div className="profile-info">
-              <span className="profile-name">{user.username || 'User'}</span>
+              <span className="profile-name">{user.username || 'Loading...'}</span>
               <span className="profile-role">Administrator</span>
             </div>
             <div className="profile-avatar-big">{user.username ? user.username[0].toUpperCase() : '?'}</div>
@@ -155,7 +176,6 @@ const ProfilePage = () => {
   const token = localStorage.getItem('token');
 
   useEffect(() => {
-    if (!token) { navigate('/auth'); return; }
     axios.get('http://127.0.0.1:8000/auth/users/me/', {
       headers: { Authorization: `Bearer ${token}` }
     })
@@ -183,7 +203,7 @@ const ProfilePage = () => {
     }
   };
 
-  if (loading) return <div className="page landing">Loading...</div>;
+  if (loading) return <div className="page landing">Loading Profile Data...</div>;
 
   return (
     <div className="dashboard-wrapper">
@@ -196,7 +216,7 @@ const ProfilePage = () => {
           <Link to="/profile" className="menu-item active">👤 Profile Settings</Link>
         </nav>
         <div className="sidebar-footer">
-          <button onClick={() => {localStorage.removeItem('token'); navigate('/')}} className="logout-btn-new">Logout System</button>
+          <button onClick={() => {localStorage.removeItem('token'); navigate('/auth')}} className="logout-btn-new">Logout System</button>
         </div>
       </aside>
       <main className="main-content-new">
@@ -231,17 +251,49 @@ const ProfilePage = () => {
   );
 };
 
+// --- MAIN APP ROUTER ---
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/auth" element={<AuthPage />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/profile" element={<ProfilePage />} />
+        {/* Guest Routes - Automatically deflect logged-in users to the dashboard */}
+        <Route 
+          path="/" 
+          element={
+            <GuestRoute>
+              <LandingPage />
+            </GuestRoute>
+          } 
+        />
+        <Route 
+          path="/auth" 
+          element={
+            <GuestRoute>
+              <AuthPage />
+            </GuestRoute>
+          } 
+        />
+        
+        {/* Protected Routes - Automatically deflect logged-out users to the login screen */}
+        <Route 
+          path="/dashboard" 
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/profile" 
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          } 
+        />
       </Routes>
     </Router>
-  )
+  );
 }
 
 export default App;
